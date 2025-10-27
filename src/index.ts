@@ -3,6 +3,9 @@ import fs from "fs/promises";
 import path from "path";
 import cors from "cors";
 import dotenv from "dotenv";
+import multer from "multer";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import crypto from "crypto";
 
 // Load environment variables
 dotenv.config();
@@ -65,9 +68,55 @@ const PRODUCTS_FILE = path.join(__dirname, "data", "products.json");
 const COLLECTIONS_FILE = path.join(__dirname, "data", "collections.json");
 const SETTINGS_FILE = path.join(__dirname, "data", "settings.json");
 
-// Load data from files
-async function loadData(): Promise<DataStore> {
+// ============ CLOUDFLARE R2 CONFIGURATION ============
+
+// Configure S3 client for Cloudflare R2
+const r2Client = new S3Client({
+  region: "auto",
+  endpoint: process.env.R2_ENDPOINT, // e.g., https://your-account-id.r2.cloudflarestorage.com
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID || "",
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || "",
+  },
+});
+
+// Configure multer for file uploads (store in memory)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (
+    req: Express.Request,
+    file: Express.Multer.File,
+    cb: multer.FileFilterCallback
+  ) => {
+    // Accept only images
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Только изображения разрешены"));
+    }
+  },
+});
+
+// ============ IN-MEMORY CACHE ============
+
+// Global in-memory cache for all data
+let dataCache: DataStore = {
+  products: [],
+  categories: [],
+  collections: [],
+  settings: { phoneNumber: "" },
+};
+
+// Flag to track if cache is loaded
+let isCacheLoaded = false;
+
+// Load data from files into cache
+async function loadDataIntoCache(): Promise<void> {
   try {
+    console.log("📦 Загрузка данных в кэш...");
     const [categoriesData, productsData, collectionsData, settingsData] =
       await Promise.all([
         fs.readFile(CATEGORIES_FILE, "utf8"),
@@ -76,60 +125,65 @@ async function loadData(): Promise<DataStore> {
         fs.readFile(SETTINGS_FILE, "utf8"),
       ]);
 
-    return {
+    dataCache = {
       categories: JSON.parse(categoriesData),
       products: JSON.parse(productsData),
       collections: JSON.parse(collectionsData),
       settings: JSON.parse(settingsData),
     };
+
+    isCacheLoaded = true;
+    console.log("✅ Кэш загружен успешно");
+    console.log(`   - Продуктов: ${dataCache.products.length}`);
+    console.log(`   - Категорий: ${dataCache.categories.length}`);
+    console.log(`   - Коллекций: ${dataCache.collections.length}`);
   } catch (error) {
-    console.error("Ошибка чтения данных:", error);
-    return {
-      products: [],
-      categories: [],
-      collections: [],
-      settings: { phoneNumber: "" },
-    };
+    console.error("❌ Ошибка загрузки данных в кэш:", error);
+    // Keep default empty cache
+    isCacheLoaded = true; // Set to true anyway to allow server to start
   }
 }
 
-// Save data to files
-async function saveData(data: DataStore): Promise<void> {
-  try {
-    await Promise.all([
-      fs.writeFile(
-        CATEGORIES_FILE,
-        JSON.stringify(data.categories, null, 2),
-        "utf8"
-      ),
-      fs.writeFile(
-        PRODUCTS_FILE,
-        JSON.stringify(data.products, null, 2),
-        "utf8"
-      ),
-      fs.writeFile(
-        COLLECTIONS_FILE,
-        JSON.stringify(data.collections, null, 2),
-        "utf8"
-      ),
-      fs.writeFile(
-        SETTINGS_FILE,
-        JSON.stringify(data.settings, null, 2),
-        "utf8"
-      ),
-    ]);
-  } catch (error) {
-    console.error("Ошибка сохранения данных:", error);
-    throw error;
-  }
+// Get data from cache
+function getCachedData(): DataStore {
+  return dataCache;
+}
+
+// Save cache to files asynchronously (non-blocking)
+function saveCacheAsync(): void {
+  // Don't await - fire and forget
+  Promise.all([
+    fs.writeFile(
+      CATEGORIES_FILE,
+      JSON.stringify(dataCache.categories, null, 2),
+      "utf8"
+    ),
+    fs.writeFile(
+      PRODUCTS_FILE,
+      JSON.stringify(dataCache.products, null, 2),
+      "utf8"
+    ),
+    fs.writeFile(
+      COLLECTIONS_FILE,
+      JSON.stringify(dataCache.collections, null, 2),
+      "utf8"
+    ),
+    fs.writeFile(
+      SETTINGS_FILE,
+      JSON.stringify(dataCache.settings, null, 2),
+      "utf8"
+    ),
+  ]).catch((error) => {
+    console.error("❌ Ошибка асинхронного сохранения данных:", error);
+  });
 }
 
 // ============ CATEGORIES ============
 
 // Get all categories
-app.get("/api/categories", async (req: Request, res: Response) => {
+app.get("/api/categories", (req: Request, res: Response) => {
   try {
-    const data = await loadData();
+    const data = getCachedData();
     res.json(data.categories);
   } catch (error) {
     res.status(500).json({ error: "Ошибка загрузки категорий" });
@@ -137,9 +191,9 @@ app.get("/api/categories", async (req: Request, res: Response) => {
 });
 
 // Get category by ID
-app.get("/api/categories/:id", async (req: Request, res: Response) => {
+app.get("/api/categories/:id", (req: Request, res: Response) => {
   try {
-    const data = await loadData();
+    const data = getCachedData();
     const category = data.categories.find((c) => c.id === req.params.id);
 
     if (category) {
@@ -153,16 +207,15 @@ app.get("/api/categories/:id", async (req: Request, res: Response) => {
 });
 
 // Create new category
-app.post("/api/categories", async (req: Request, res: Response) => {
+app.post("/api/categories", (req: Request, res: Response) => {
   try {
-    const data = await loadData();
     const newCategory: Category = {
       id: Date.now().toString(),
       ...req.body,
     };
 
-    data.categories.push(newCategory);
-    await saveData(data);
+    dataCache.categories.push(newCategory);
+    saveCacheAsync();
     res.status(201).json(newCategory);
   } catch (error) {
     res.status(500).json({ error: "Ошибка создания категории" });
@@ -170,15 +223,17 @@ app.post("/api/categories", async (req: Request, res: Response) => {
 });
 
 // Update category
-app.put("/api/categories/:id", async (req: Request, res: Response) => {
+app.put("/api/categories/:id", (req: Request, res: Response) => {
   try {
-    const data = await loadData();
-    const index = data.categories.findIndex((c) => c.id === req.params.id);
+    const index = dataCache.categories.findIndex((c) => c.id === req.params.id);
 
     if (index !== -1) {
-      data.categories[index] = { ...data.categories[index], ...req.body };
-      await saveData(data);
-      res.json(data.categories[index]);
+      dataCache.categories[index] = {
+        ...dataCache.categories[index],
+        ...req.body,
+      };
+      saveCacheAsync();
+      res.json(dataCache.categories[index]);
     } else {
       res.status(404).json({ error: "Категория не найдена" });
     }
@@ -188,14 +243,13 @@ app.put("/api/categories/:id", async (req: Request, res: Response) => {
 });
 
 // Delete category
-app.delete("/api/categories/:id", async (req: Request, res: Response) => {
+app.delete("/api/categories/:id", (req: Request, res: Response) => {
   try {
-    const data = await loadData();
-    const index = data.categories.findIndex((c) => c.id === req.params.id);
+    const index = dataCache.categories.findIndex((c) => c.id === req.params.id);
 
     if (index !== -1) {
-      data.categories.splice(index, 1);
-      await saveData(data);
+      dataCache.categories.splice(index, 1);
+      saveCacheAsync();
       res.json({ message: "Категория удалена" });
     } else {
       res.status(404).json({ error: "Категория не найдена" });
@@ -208,9 +262,9 @@ app.delete("/api/categories/:id", async (req: Request, res: Response) => {
 // ============ PRODUCTS ============
 
 // Get all products with optional filters
-app.get("/api/products", async (req: Request, res: Response) => {
+app.get("/api/products", (req: Request, res: Response) => {
   try {
-    const data = await loadData();
+    const data = getCachedData();
     let products = data.products;
 
     // Filter by category
@@ -230,9 +284,9 @@ app.get("/api/products", async (req: Request, res: Response) => {
 });
 
 // Get product by ID
-app.get("/api/products/:id", async (req: Request, res: Response) => {
+app.get("/api/products/:id", (req: Request, res: Response) => {
   try {
-    const data = await loadData();
+    const data = getCachedData();
     const product = data.products.find((p) => p.id === req.params.id);
 
     if (product) {
@@ -246,14 +300,13 @@ app.get("/api/products/:id", async (req: Request, res: Response) => {
 });
 
 // Toggle product like
-app.patch("/api/products/:id/like", async (req: Request, res: Response) => {
+app.patch("/api/products/:id/like", (req: Request, res: Response) => {
   try {
-    const data = await loadData();
-    const product = data.products.find((p) => p.id === req.params.id);
+    const product = dataCache.products.find((p) => p.id === req.params.id);
 
     if (product) {
       product.isLiked = !product.isLiked;
-      await saveData(data);
+      saveCacheAsync();
       res.json(product);
     } else {
       res.status(404).json({ error: "Товар не найден" });
@@ -264,17 +317,16 @@ app.patch("/api/products/:id/like", async (req: Request, res: Response) => {
 });
 
 // Create new product
-app.post("/api/products", async (req: Request, res: Response) => {
+app.post("/api/products", (req: Request, res: Response) => {
   try {
-    const data = await loadData();
     const newProduct: Product = {
       id: Date.now().toString(),
       ...req.body,
       isLiked: false,
     };
 
-    data.products.push(newProduct);
-    await saveData(data);
+    dataCache.products.push(newProduct);
+    saveCacheAsync();
     res.status(201).json(newProduct);
   } catch (error) {
     res.status(500).json({ error: "Ошибка создания товара" });
@@ -282,15 +334,14 @@ app.post("/api/products", async (req: Request, res: Response) => {
 });
 
 // Update product
-app.put("/api/products/:id", async (req: Request, res: Response) => {
+app.put("/api/products/:id", (req: Request, res: Response) => {
   try {
-    const data = await loadData();
-    const index = data.products.findIndex((p) => p.id === req.params.id);
+    const index = dataCache.products.findIndex((p) => p.id === req.params.id);
 
     if (index !== -1) {
-      data.products[index] = { ...data.products[index], ...req.body };
-      await saveData(data);
-      res.json(data.products[index]);
+      dataCache.products[index] = { ...dataCache.products[index], ...req.body };
+      saveCacheAsync();
+      res.json(dataCache.products[index]);
     } else {
       res.status(404).json({ error: "Товар не найден" });
     }
@@ -300,14 +351,13 @@ app.put("/api/products/:id", async (req: Request, res: Response) => {
 });
 
 // Delete product
-app.delete("/api/products/:id", async (req: Request, res: Response) => {
+app.delete("/api/products/:id", (req: Request, res: Response) => {
   try {
-    const data = await loadData();
-    const index = data.products.findIndex((p) => p.id === req.params.id);
+    const index = dataCache.products.findIndex((p) => p.id === req.params.id);
 
     if (index !== -1) {
-      data.products.splice(index, 1);
-      await saveData(data);
+      dataCache.products.splice(index, 1);
+      saveCacheAsync();
       res.json({ message: "Товар удален" });
     } else {
       res.status(404).json({ error: "Товар не найден" });
@@ -320,7 +370,7 @@ app.delete("/api/products/:id", async (req: Request, res: Response) => {
 // ============ ADMIN AUTH ============
 
 // Admin password verification
-app.post("/api/admin/auth", async (req: Request, res: Response) => {
+app.post("/api/admin/auth", (req: Request, res: Response) => {
   try {
     const { password } = req.body;
 
@@ -356,9 +406,9 @@ app.post("/api/admin/auth", async (req: Request, res: Response) => {
 // ============ SETTINGS ============
 
 // Get phone number for orders
-app.get("/api/settings/phone", async (req: Request, res: Response) => {
+app.get("/api/settings/phone", (req: Request, res: Response) => {
   try {
-    const data = await loadData();
+    const data = getCachedData();
     res.json({ phoneNumber: data.settings.phoneNumber });
   } catch (error) {
     res.status(500).json({ error: "Ошибка загрузки настроек" });
@@ -366,7 +416,7 @@ app.get("/api/settings/phone", async (req: Request, res: Response) => {
 });
 
 // Update phone number for orders
-app.put("/api/settings/phone", async (req: Request, res: Response) => {
+app.put("/api/settings/phone", (req: Request, res: Response) => {
   try {
     const { phoneNumber } = req.body;
 
@@ -374,13 +424,12 @@ app.put("/api/settings/phone", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Номер телефона не указан" });
     }
 
-    const data = await loadData();
-    data.settings.phoneNumber = phoneNumber;
-    await saveData(data);
+    dataCache.settings.phoneNumber = phoneNumber;
+    saveCacheAsync();
 
     res.json({
       message: "Номер телефона обновлен",
-      phoneNumber: data.settings.phoneNumber,
+      phoneNumber: dataCache.settings.phoneNumber,
     });
   } catch (error) {
     res.status(500).json({ error: "Ошибка обновления настроек" });
@@ -390,9 +439,9 @@ app.put("/api/settings/phone", async (req: Request, res: Response) => {
 // ============ COLLECTIONS ============
 
 // Get all collections
-app.get("/api/collections", async (req: Request, res: Response) => {
+app.get("/api/collections", (req: Request, res: Response) => {
   try {
-    const data = await loadData();
+    const data = getCachedData();
     res.json(data.collections);
   } catch (error) {
     res.status(500).json({ error: "Ошибка загрузки коллекций" });
@@ -400,9 +449,9 @@ app.get("/api/collections", async (req: Request, res: Response) => {
 });
 
 // Get collection by ID with full product details
-app.get("/api/collections/:id", async (req: Request, res: Response) => {
+app.get("/api/collections/:id", (req: Request, res: Response) => {
   try {
-    const data = await loadData();
+    const data = getCachedData();
     const collection = data.collections.find((c) => c.id === req.params.id);
 
     if (collection) {
@@ -428,16 +477,15 @@ app.get("/api/collections/:id", async (req: Request, res: Response) => {
 });
 
 // Create new collection
-app.post("/api/collections", async (req: Request, res: Response) => {
+app.post("/api/collections", (req: Request, res: Response) => {
   try {
-    const data = await loadData();
     const newCollection: Collection = {
       id: Date.now().toString(),
       ...req.body,
     };
 
-    data.collections.push(newCollection);
-    await saveData(data);
+    dataCache.collections.push(newCollection);
+    saveCacheAsync();
     res.status(201).json(newCollection);
   } catch (error) {
     res.status(500).json({ error: "Ошибка создания коллекции" });
@@ -445,15 +493,19 @@ app.post("/api/collections", async (req: Request, res: Response) => {
 });
 
 // Update collection
-app.put("/api/collections/:id", async (req: Request, res: Response) => {
+app.put("/api/collections/:id", (req: Request, res: Response) => {
   try {
-    const data = await loadData();
-    const index = data.collections.findIndex((c) => c.id === req.params.id);
+    const index = dataCache.collections.findIndex(
+      (c) => c.id === req.params.id
+    );
 
     if (index !== -1) {
-      data.collections[index] = { ...data.collections[index], ...req.body };
-      await saveData(data);
-      res.json(data.collections[index]);
+      dataCache.collections[index] = {
+        ...dataCache.collections[index],
+        ...req.body,
+      };
+      saveCacheAsync();
+      res.json(dataCache.collections[index]);
     } else {
       res.status(404).json({ error: "Коллекция не найдена" });
     }
@@ -463,14 +515,15 @@ app.put("/api/collections/:id", async (req: Request, res: Response) => {
 });
 
 // Delete collection
-app.delete("/api/collections/:id", async (req: Request, res: Response) => {
+app.delete("/api/collections/:id", (req: Request, res: Response) => {
   try {
-    const data = await loadData();
-    const index = data.collections.findIndex((c) => c.id === req.params.id);
+    const index = dataCache.collections.findIndex(
+      (c) => c.id === req.params.id
+    );
 
     if (index !== -1) {
-      data.collections.splice(index, 1);
-      await saveData(data);
+      dataCache.collections.splice(index, 1);
+      saveCacheAsync();
       res.json({ message: "Коллекция удалена" });
     } else {
       res.status(404).json({ error: "Коллекция не найдена" });
@@ -480,8 +533,69 @@ app.delete("/api/collections/:id", async (req: Request, res: Response) => {
   }
 });
 
+// ============ IMAGE UPLOAD ============
+
+// Upload image to Cloudflare R2
+app.post(
+  "/api/upload",
+  upload.single("image"),
+  async (req: Request, res: Response) => {
+    try {
+      const file = req.file as Express.Multer.File | undefined;
+
+      if (!file) {
+        return res.status(400).json({ error: "Файл не был загружен" });
+      }
+
+      // Generate unique filename
+      const fileExtension = path.extname(file.originalname);
+      const uniqueFilename = `${crypto.randomUUID()}${fileExtension}`;
+      const key = `images/${uniqueFilename}`;
+
+      // Upload to R2
+      const uploadCommand = new PutObjectCommand({
+        Bucket: process.env.R2_BUCKET_NAME || "images",
+        Key: key,
+        Body: file.buffer,
+        ContentType: file.mimetype,
+      });
+
+      await r2Client.send(uploadCommand);
+
+      // Construct public URL
+      const publicUrl = `${process.env.R2_PUBLIC_URL}/${key}`;
+
+      res.json({
+        success: true,
+        url: publicUrl,
+        filename: uniqueFilename,
+      });
+    } catch (error) {
+      console.error("Ошибка загрузки изображения:", error);
+      res.status(500).json({ error: "Ошибка загрузки изображения" });
+    }
+  }
+);
+
 // ============ SERVER START ============
 
-app.listen(PORT, () => {
-  console.log(`🚀 Сервер запущен на http://localhost:${PORT}`);
-});
+// Start server after loading cache
+async function startServer() {
+  try {
+    // Load all data into cache before starting server
+    await loadDataIntoCache();
+
+    // Start Express server
+    app.listen(PORT, () => {
+      console.log(`🚀 Сервер запущен на http://localhost:${PORT}`);
+      console.log(`✨ Все данные загружены в память`);
+      console.log(`⚡ Сервер готов к обработке запросов`);
+    });
+  } catch (error) {
+    console.error("❌ Ошибка запуска сервера:", error);
+    process.exit(1);
+  }
+}
+
+// Initialize server
+startServer();

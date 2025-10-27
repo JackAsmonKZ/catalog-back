@@ -3,7 +3,7 @@
     "id": "prod-5",
     "name": "Ампулы с витамином C",
     "description": "Концентрированная формула для сияния кожи. Осветляет пигментацию и повышает упругость.",
-    "image": "https://picsum.photos/150/150",
+    "image": "https://pub-5fd609ad97b94d6783c2906fc3b49605.r2.dev/images/d74ad399-96c5-405b-8608-2b8ce609376c.jpg",
     "volumes": [
       {
         "volume": "30ml",
@@ -18,34 +18,6 @@
     "isLiked": false
   },
   {
-    "id": "prod-7",
-    "name": "Ферментированная эссенция",
-    "description": "Насыщает кожу питательными веществами. Улучшает текстуру и повышает эластичность.",
-    "image": "https://picsum.photos/250/250",
-    "volumes": [
-      {
-        "volume": "150ml",
-        "price": 2490
-      }
-    ],
-    "categoryId": "cat-6",
-    "isLiked": false
-  },
-  {
-    "id": "1761489728101",
-    "name": "Новый товар",
-    "description": "описание нового товара",
-    "image": "https://picsum.photos/250/250",
-    "categoryId": "cat-1",
-    "volumes": [
-      {
-        "volume": "50ml",
-        "price": 100
-      }
-    ],
-    "isLiked": false
-  },
-  {
     "id": "1761492739056",
     "name": "Новый товар2",
     "description": "описание новое2",
@@ -55,6 +27,34 @@
       {
         "volume": "10ml",
         "price": 200
+      }
+    ],
+    "isLiked": false
+  },
+  {
+    "id": "1761589646235",
+    "name": "Крем классный",
+    "description": "описание классное",
+    "image": "https://images.fcc20207d93db637e2fb8e90109ed83d.r2.cloudflarestorage.com/images/e384b3b2-28ba-4fbc-930a-221691fd7652.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=38e59b41e2332da69df5c34c0f0f2a99%2F20251027%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20251027T182715Z&X-Amz-Expires=604800&X-Amz-Signature=fef12c94a15b8ebc31bfb399a917e1627f016b18782e3213f4a935c91a7d5283&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject",
+    "categoryId": "cat-3",
+    "volumes": [
+      {
+        "volume": "10ml",
+        "price": 100
+      }
+    ],
+    "isLiked": false
+  },
+  {
+    "id": "1761590219060",
+    "name": "qwe",
+    "description": "123",
+    "image": "https://pub-5fd609ad97b94d6783c2906fc3b49605.r2.dev/images/5710cf3e-1a2c-4aff-8c6f-f28455afc63b.png",
+    "categoryId": "cat-3",
+    "volumes": [
+      {
+        "volume": "10",
+        "price": 10
       }
     ],
     "isLiked": false

@@ -1,0 +1,70 @@
+[
+  {
+    "id": "col-2",
+    "name": "Сияние и осветление",
+    "description": "Специальный уход для сияющей кожи и борьбы с пигментацией",
+    "productIds": [
+      {
+        "productId": "prod-5",
+        "recommendedVolumeIndex": 0
+      },
+      {
+        "productId": "prod-3",
+        "recommendedVolumeIndex": 0
+      },
+      {
+        "productId": "prod-7",
+        "recommendedVolumeIndex": 0
+      }
+    ]
+  },
+  {
+    "id": "col-3",
+    "name": "Интенсивное увлажнение",
+    "description": "Максимальное увлажнение для сухой и обезвоженной кожи",
+    "productIds": [
+      {
+        "productId": "prod-7",
+        "recommendedVolumeIndex": 0
+      },
+      {
+        "productId": "prod-4",
+        "recommendedVolumeIndex": 0
+      }
+    ]
+  },
+  {
+    "id": "1761493771237",
+    "name": "Уход за волосами",
+    "description": "Уход за волосами описание",
+    "productIds": [
+      {
+        "productId": "1761489728101",
+        "recommendedVolumeIndex": 0
+      },
+      {
+        "productId": "prod-5",
+        "recommendedVolumeIndex": 1
+      }
+    ]
+  },
+  {
+    "id": "1761494892976",
+    "name": "Крутая подборка",
+    "description": "описание",
+    "productIds": [
+      {
+        "productId": "prod-5",
+        "recommendedVolumeIndex": 1
+      },
+      {
+        "productId": "1761492739056",
+        "recommendedVolumeIndex": 0
+      },
+      {
+        "productId": "prod-7",
+        "recommendedVolumeIndex": 0
+      }
+    ]
+  }
+]

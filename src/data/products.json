@@ -1,0 +1,62 @@
+[
+  {
+    "id": "prod-5",
+    "name": "Ампулы с витамином C",
+    "description": "Концентрированная формула для сияния кожи. Осветляет пигментацию и повышает упругость.",
+    "image": "https://picsum.photos/150/150",
+    "volumes": [
+      {
+        "volume": "30ml",
+        "price": 2190
+      },
+      {
+        "volume": "50ml",
+        "price": 3290
+      }
+    ],
+    "categoryId": "cat-4",
+    "isLiked": false
+  },
+  {
+    "id": "prod-7",
+    "name": "Ферментированная эссенция",
+    "description": "Насыщает кожу питательными веществами. Улучшает текстуру и повышает эластичность.",
+    "image": "https://picsum.photos/250/250",
+    "volumes": [
+      {
+        "volume": "150ml",
+        "price": 2490
+      }
+    ],
+    "categoryId": "cat-6",
+    "isLiked": false
+  },
+  {
+    "id": "1761489728101",
+    "name": "Новый товар",
+    "description": "описание нового товара",
+    "image": "https://picsum.photos/250/250",
+    "categoryId": "cat-1",
+    "volumes": [
+      {
+        "volume": "50ml",
+        "price": 100
+      }
+    ],
+    "isLiked": false
+  },
+  {
+    "id": "1761492739056",
+    "name": "Новый товар2",
+    "description": "описание новое2",
+    "image": "https://picsum.photos/250/200",
+    "categoryId": "1761492676644",
+    "volumes": [
+      {
+        "volume": "10ml",
+        "price": 200
+      }
+    ],
+    "isLiked": false
+  }
+]
